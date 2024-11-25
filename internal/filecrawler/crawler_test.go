@@ -35,7 +35,7 @@ func TestCancelContext(t *testing.T) {
 		filesPerDir = max(runtime.NumCPU(), 6)
 	)
 
-	_, err := run(
+	_, err := runWithErrors(
 		ctx,
 		t,
 		Configuration{
@@ -45,6 +45,13 @@ func TestCancelContext(t *testing.T) {
 		},
 		dirs,
 		filesPerDir,
+		&errorsConfig{
+			openFilePanic: false,
+			openFileError: false,
+			fileReadError: false,
+			dirReadPanic:  false,
+			dirReadError:  false,
+		},
 	)
 
 	require.ErrorContains(t, err, context.DeadlineExceeded.Error())

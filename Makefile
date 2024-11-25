@@ -38,30 +38,30 @@ test: install-deps
 .PHONY: update
 update:
 	@if [ -n "$(shell git status --untracked-files=no --porcelain)" ]; then \
-	  echo 'You have some changes. Please commit, checkout or stash them.'; \
-	  exit 1; \
+		echo 'You have some changes. Please commit, checkout or stash them.'; \
+		exit 1; \
 	fi
 	@current_branch=$$(git branch --show-current); \
 	echo "Current branch: $$current_branch"; \
 	git checkout main; \
 	git pull; \
 	for branch in $$(git branch | sed 's/^[* ]*//'); do \
-	  git checkout $$branch; \
-	  if ! git rev-parse --symbolic-full-name @{u} >/dev/null 2>&1; then \
-	    branch_exists=$$(git ls-remote --heads origin $$branch); \
-	    if [ -n "$$branch_exists" ]; then \
-	      echo "Upstream exists for $$branch. Setting upstream to origin/$$branch."; \
-	      git branch --set-upstream-to=origin/$$branch; \
-	    else \
-	      echo "Upstream not found for $$branch. Pushing and setting upstream to origin/$$branch."; \
-	      git push --set-upstream origin $$branch; \
-	      git branch --set-upstream-to=origin/$$branch; \
-	    fi; \
-	  fi; \
-	  git pull --rebase; \
-	  git push -f; \
-	  git rebase main; \
-	  git push -f; \
+		git checkout $$branch; \
+		if ! git rev-parse --symbolic-full-name @{u} >/dev/null 2>&1; then \
+			branch_exists=$$(git ls-remote --heads origin $$branch); \
+			if [ -n "$$branch_exists" ]; then \
+				echo "Upstream exists for $$branch. Setting upstream to origin/$$branch."; \
+				git branch --set-upstream-to=origin/$$branch; \
+			else \
+				echo "Upstream not found for $$branch. Pushing and setting upstream to origin/$$branch."; \
+				git push --set-upstream origin $$branch; \
+				git branch --set-upstream-to=origin/$$branch; \
+			fi; \
+		fi; \
+		git pull --rebase; \
+		git push -f; \
+		git rebase main; \
+		git push -f; \
 	done; \
 	git checkout $$current_branch; \
 	echo 'Successfully updated'
