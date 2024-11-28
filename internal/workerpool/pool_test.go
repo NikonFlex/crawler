@@ -52,6 +52,26 @@ func collect[T any](in <-chan T) []T {
 	return result
 }
 
+func collectRestricted[T any](in <-chan T, restrict int) ([]T, error) {
+	result := make([]T, 0)
+	count := 0
+
+	for e := range in {
+		count++
+		result = append(result, e)
+	}
+
+	if count > restrict {
+		return []T{}, fmt.Errorf(
+			"Exceeded in channel total elements restriction: expected %d, got %d",
+			restrict,
+			count,
+		)
+	}
+
+	return result, nil
+}
+
 func accumulate(current TestType, accum TestType) TestType {
 	time.Sleep(sleepTime)
 
@@ -216,7 +236,8 @@ func TestAccumulatePerformance(t *testing.T) {
 		}
 
 		in := generate(s)
-		collect(wp.Accumulate(ctx, 5, in, accumulate))
+		_, err := collectRestricted(wp.Accumulate(ctx, 5, in, accumulate), 5)
+		require.NoError(t, err)
 	})
 
 	second := testing.Benchmark(func(b *testing.B) {
@@ -229,7 +250,8 @@ func TestAccumulatePerformance(t *testing.T) {
 		}
 
 		in := generate(s)
-		collect(wp.Accumulate(ctx, 1, in, accumulate))
+		_, err := collectRestricted(wp.Accumulate(ctx, 1, in, accumulate), 1)
+		require.NoError(t, err)
 	})
 
 	require.GreaterOrEqual(t, float64(second.NsPerOp())/float64(first.NsPerOp()), 4.5)
