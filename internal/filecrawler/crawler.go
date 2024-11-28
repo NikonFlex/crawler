@@ -180,13 +180,7 @@ func (c *crawlerImpl[T, R]) deserializeFiles(ctx context.Context, execContext *e
 		defer func() {
 			// recovering from panics
 			if r := recover(); r != nil {
-				var err error
-				if e, ok := r.(error); ok {
-					err = e
-				} else {
-					err = fmt.Errorf("%v", r)
-				}
-				c.throwError(err, execContext)
+				c.recoverError(r, execContext)
 			}
 		}()
 		return c.deserializeFile(execContext, filePath)
@@ -231,13 +225,7 @@ func (c *crawlerImpl[T, R]) collectFilePaths(ctx context.Context, execContext *e
 		defer func() {
 			// recovering from panics
 			if r := recover(); r != nil {
-				var err error
-				if e, ok := r.(error); ok {
-					err = e
-				} else {
-					err = fmt.Errorf("%v", r)
-				}
-				c.throwError(err, execContext)
+				c.recoverError(r, execContext)
 			}
 		}()
 		return c.exploreDir(ctx, parent, execContext, files)
@@ -255,4 +243,16 @@ func (c *crawlerImpl[T, R]) onErrorHappened(err error, execContext *executionCon
 // preventing duplicate or conflicting error states.
 func (c *crawlerImpl[T, R]) throwError(err error, execContext *executionContext[T, R]) {
 	execContext.once.Do(func() { c.onErrorHappened(err, execContext) })
+}
+
+// recover from errors
+func (c *crawlerImpl[T, R]) recoverError(r any, execContext *executionContext[T, R]) {
+	var err error
+	if e, ok := r.(error); ok {
+		err = e
+	} else {
+		err = fmt.Errorf("%v", r)
+	}
+	c.throwError(err, execContext)
+
 }
