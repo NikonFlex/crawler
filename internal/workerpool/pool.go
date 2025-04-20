@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"sync"
 )
 
 // Accumulator is a function type used to aggregate values of type T into a result of type R.
@@ -70,11 +71,115 @@ func (p *poolImpl[T, R]) Accumulate(
 	input <-chan T,
 	accumulator Accumulator[T, R],
 ) <-chan R {
-	panic("not implemented")
+	result := make(chan R)
+	wg := new(sync.WaitGroup)
+
+	// Start worker goroutines.
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		// start worker
+		go func() {
+			// create var for accumulation
+			var accumulation R
+			defer func() {
+				defer wg.Done() // show finish
+				// Send the final accumulation when the worker completes.
+				select {
+				case <-ctx.Done(): // check done
+					return
+				case result <- accumulation: // push worker accumulation to result channel
+				}
+			}()
+
+			// Process input items.
+			for {
+				select {
+				case <-ctx.Done(): // check done
+					return
+				case value, ok := <-input: // take values from input channel
+					if !ok {
+						return
+					}
+					accumulation = accumulator(value, accumulation) // accumulate values
+				}
+			}
+		}()
+	}
+
+	// Close the result channel once all workers finish.
+	go func() {
+		defer close(result)
+		wg.Wait()
+	}()
+
+	return result
 }
 
-func (p *poolImpl[T, R]) List(ctx context.Context, workers int, start T, searcher Searcher[T]) {
-	panic("not implemented")
+func (p *poolImpl[T, R]) processLayer(
+	ctx context.Context,
+	workers int,
+	currentLayer []T,
+	searcher Searcher[T],
+) []T {
+	var (
+		nextLayer []T
+		mu        sync.Mutex
+		wg        sync.WaitGroup
+	)
+
+	parents := make(chan T)
+
+	// Start worker goroutines to process parent nodes.
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		// start worker
+		go func() {
+			defer wg.Done() // show finish
+
+			for parent := range parents {
+				select {
+				case <-ctx.Done(): // check done
+					return
+				default:
+					children := searcher(parent) // get children
+					mu.Lock()
+					nextLayer = append(nextLayer, children...)
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+
+	// Send parent nodes to workers.
+	for _, node := range currentLayer {
+		select {
+		case <-ctx.Done(): // check done
+			close(parents)
+			wg.Wait()
+			return nil
+		case parents <- node:
+		}
+	}
+	close(parents)
+
+	// Wait for all workers to finish.
+	wg.Wait()
+
+	return nextLayer
+}
+
+func (p *poolImpl[T, R]) List(
+	ctx context.Context,
+	workers int,
+	start T,
+	searcher Searcher[T],
+) {
+	currentLayer := []T{start}
+
+	// Process each layer until no more nodes exist.
+	for len(currentLayer) > 0 {
+		currentLayer = p.processLayer(ctx, workers, currentLayer, searcher)
+	}
 }
 
 func (p *poolImpl[T, R]) Transform(
@@ -83,5 +188,40 @@ func (p *poolImpl[T, R]) Transform(
 	input <-chan T,
 	transformer Transformer[T, R],
 ) <-chan R {
-	panic("not implemented")
+	result := make(chan R)
+	wg := new(sync.WaitGroup)
+
+	// Start worker goroutines.
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		// start worker
+		go func() {
+			defer wg.Done() // show finish
+
+			for {
+				select {
+				case <-ctx.Done(): // check done
+					return
+				case value, ok := <-input: // take value from input
+					if !ok {
+						return
+					}
+
+					select {
+					case <-ctx.Done(): // check done
+						return
+					case result <- transformer(value): // transform value
+					}
+				}
+			}
+		}()
+	}
+
+	// Close the result channel once all workers finish.
+	go func() {
+		defer close(result)
+		wg.Wait()
+	}()
+
+	return result
 }
